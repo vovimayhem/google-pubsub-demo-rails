@@ -1,0 +1,16 @@
+# [START settings]
+default: &default
+  project_id: <%= ENV['GOOGLE_CLOUD_PROJECT_ID'] %>
+  gcs_bucket: <%= ENV['GOOGLE_CLOUD_STORAGE_BUCKET'] %>
+  pubsub_topic: <%= ENV['GOOGLE_CLOUD_PUBSUB_TOPIC'] %>
+  pubsub_subscription: <%= ENV['GOOGLE_CLOUD_PUBSUB_SUBSCRIPTION'] %>
+  oauth2:
+    client_id: <%= ENV['GOOGLE_CLOUD_OAUTH2_CLIENT_ID'] %>
+    client_secret: <%= ENV['GOOGLE_CLOUD_OAUTH2_CLIENT_SECRET'] %>
+# [END settings]
+
+development:
+  <<: *default
+
+production:
+  <<: *default

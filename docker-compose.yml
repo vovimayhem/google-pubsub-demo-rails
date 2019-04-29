@@ -1,0 +1,96 @@
+version: "2.4"
+
+volumes:
+  postgres_data:
+  pubsub_data:
+
+services:
+  postgres:
+    # We'll use the latest version supported on Google Cloud SQL:
+    image: postgres:11.1-alpine
+    ports:
+    - ${DEMO_PGPORT:-5432}:5432
+    volumes:
+    # We'll store the postgres data in the 'postgres_data' volume we defined:
+    - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: 3x4mpl3P455w0rd
+
+  pubsub:
+    image: vovimayhem/google-pubsub-emulator:latest
+    ports:
+    - ${PUBSUB_PORT:-8085}:8085
+    volumes:
+    - pubsub_data:/data
+
+  test: &app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+      args:
+      - DEVELOPER_UID=${UID:-1000}
+    image: vovimayhem/google-pubsub-emulator-rails-demo:development
+    entrypoint: /usr/src/bin/dev-entrypoint.sh
+    volumes:
+    # Mount the app code into the app containers at the "/usr/src" folder:
+    - .:/usr/src
+
+    # Keep the stdin open, so we can attach to our app container's process
+    # and do things such as byebug, etc:
+    stdin_open: true
+
+    # Enable sending signals (CTRL+C, CTRL+P + CTRL+Q) into the container:
+    tty: true
+
+    # Link to our postgres and redis containers, so they can be visible from our
+    # app containers:
+    depends_on:
+    - postgres
+    - pubsub
+
+    # The command we want to execute by default when running the container
+    command: rspec
+
+    # Specify environment variables available for our app containers. We'll
+    # leave a YML anchor in case we need to override or add more variables if
+    # needed on each app container:
+    environment: &app_environment
+      # We'll set the RAILS_ENV and RACK_ENV environment variables to
+      # 'development', so our app containers will start in 'development' mode
+      # on this compose project:
+      RAILS_ENV: test
+      RACK_ENV: test
+      RAILS_LOG_TO_STDOUT: "true"
+
+      # We'll set the DATABASE_URL environment variable for the app to connect
+      # to our postgres container - no need to use a 'config/database.yml' file.
+      DATABASE_URL: postgres://postgres:3x4mpl3P455w0rd@postgres:5432/demo_test
+
+      # Use the local pubsub emulator instead of Google Cloud:
+      PUBSUB_EMULATOR_HOST: pubsub:8085
+
+      # Goocle Cloud variables:
+      GOOGLE_CLOUD_PROJECT_ID: ${GOOGLE_CLOUD_PROJECT_ID}
+      GOOGLE_CLOUD_STORAGE_BUCKET: ${GOOGLE_CLOUD_STORAGE_BUCKET}
+      GOOGLE_CLOUD_PUBSUB_TOPIC: your-pubsub-topic
+      GOOGLE_CLOUD_PUBSUB_SUBSCRIPTION: your-pubsub-subscription
+      GOOGLE_CLOUD_OAUTH2_CLIENT_ID: ${GOOGLE_CLOUD_OAUTH2_CLIENT_ID}
+      GOOGLE_CLOUD_OAUTH2_CLIENT_SECRET: ${GOOGLE_CLOUD_OAUTH2_CLIENT_SECRET}
+
+  web:
+    <<: *app
+    command: rails server -p 3000 -b 0.0.0.0
+    ports:
+    - ${DEMO_WEB_PORT:-3000}:3000
+    environment: &app_development_environment
+      <<: *app_environment
+      DATABASE_URL: postgres://postgres:3x4mpl3P455w0rd@postgres:5432/demo_development
+      RAILS_ENV: development
+      RACK_ENV: development
+
+  worker:
+    <<: *app
+    command: rails worker:start
+    environment:
+      <<: *app_development_environment
